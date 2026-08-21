@@ -1,0 +1,10 @@
+build/
+target/
+*.log
+*.pid
+*.csv
+joycon-rumble.toml
+joycon-rumble-profiles.toml
+.env
+.env.*
+!.env.example

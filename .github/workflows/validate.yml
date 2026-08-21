@@ -1,0 +1,28 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    env:
+      PUBLICATION_DENYLIST: ${{ vars.PUBLICATION_DENYLIST }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt clippy
+      - name: Require publication policy
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PUBLICATION_DENYLIST)) {
+            throw 'Configure the PUBLICATION_DENYLIST repository variable before enabling CI.'
+          }
+      - shell: pwsh
+        run: ./scripts/check-publication-policy.ps1
+      - run: cargo test --all-targets
+      - run: cargo fmt -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - shell: pwsh
+        run: ./scripts/package.ps1

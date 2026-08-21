@@ -1,0 +1,18 @@
+listen = "127.0.0.1:9010"
+namespace = "joyconrumble"
+heartbeat_timeout_ms = 2000
+low_freq_hz = 160.0
+high_freq_hz = 320.0
+imu_profile_path = "joycon-rumble-profiles.toml"
+
+[[devices]]
+side = "left"
+bluetooth_address = "auto"
+osc_address = "left"
+id = 1
+
+[[devices]]
+side = "right"
+bluetooth_address = "auto"
+osc_address = "right"
+id = 2

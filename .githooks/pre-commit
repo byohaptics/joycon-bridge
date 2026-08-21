@@ -1,0 +1,6 @@
+#!/bin/sh
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/check-publication-policy.ps1 || exit 1
+cargo test --all-targets || exit 1
+cargo fmt -- --check || exit 1
+cargo clippy --all-targets -- -D warnings

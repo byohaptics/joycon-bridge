@@ -1,0 +1,17 @@
+[package]
+name = "joycon-rumble-bridge"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hidapi = { version = "2.6.6", features = ["windows-native"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+iced = { version = "0.13.1", features = ["tokio"] }
+
+[build-dependencies]
+winres = "0.1"
+
+[[bin]]
+name = "joycon-rumble-gui"
+path = "src/bin/gui.rs"
