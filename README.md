@@ -30,4 +30,10 @@ cargo clippy --all-targets -- -D warnings
 
 詳しい設計は[Bridge design](docs/design.md)を参照してください。
 
+## 作者
+
+[byohaptics](https://github.com/byohaptics)
+
+Co-authored-by: Codex <codex@openai.com>
+
 Licensed under the [MIT License](LICENSE).
