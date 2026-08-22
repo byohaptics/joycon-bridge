@@ -7,6 +7,20 @@ Joy-ConをBYO Hapticsで振動させるためのWindowsアプリです。
 - Supported Bridge API: `0.1.0`
 - API contract: [BYO Haptics Joy-Con Bridge API](https://github.com/byohaptics/byo-haptics/blob/main/docs/joycon-bridge-contract.md)
 
+## ダウンロード
+
+[最新版をダウンロード](https://github.com/byohaptics/joycon-bridge/releases/latest/download/Joy-Con-Bridge.exe)
+
+インストールは不要です。ダウンロードした`Joy-Con-Bridge.exe`をそのまま実行してください。
+
+初回起動時にWindowsが「WindowsによってPCが保護されました」と警告することがあります。これは配布元の署名がないためで、`詳細情報`から`実行`を選ぶと起動できます。
+
+配布物が改ざんされていないことは、同じリリースページの`Joy-Con-Bridge.exe.sha256`と照合して確認できます。
+
+```powershell
+Get-FileHash Joy-Con-Bridge.exe -Algorithm SHA256
+```
+
 ## 使い方
 
 1. WindowsのBluetooth設定でJoy-Con (L)とJoy-Con (R)を接続します。
