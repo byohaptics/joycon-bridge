@@ -13,7 +13,15 @@
 
 ## Status And Operation
 
-The GUI shows the left and right Joy-Con connection, Bridge process, and Plugin heartbeat as separate states. Status is conveyed by both shape and color: a filled green `●`, red `×`, and gray `－` encode positive, negative, and not checked states. While the Bridge runs, Joy-Con labels report live `接続` or `未接続` state from the service. While it is stopped, a manual check reports only the snapshot `検出済み` or `未検出`; starting the Bridge invalidates that snapshot so a failed start cannot leave a stale `接続` indication. Its workflow is Joy-Con connection check, Bridge operation, then vibration measurement and optimization. Measurement and optimization are not required before normal Bridge use. Normal action buttons share one color and size; only the stop action uses the danger color. Both configured Joy-Cons must be available when the service starts. A HID read or write failure stops the service instead of leaving a nonfunctional process running; reconnect the controller and start the service again.
+A state card leads: whether it is vibrating, the current status line, and the start or stop action. Under it the left Joy-Con, the right Joy-Con, and the Plugin heartbeat are listed as rows. Vibration measurement and the operation log are collapsed until asked for. The display is not numbered as a sequence of steps; it is read at a glance, not walked through once.
+
+Status is encoded by shape and color together, so it survives without color vision: a filled green `●` is active, an amber `○` is pending, a gray `－` is inactive or not yet checked, and a red `×` is a fault. Red carries only genuine faults; a stopped Bridge and a Bridge waiting for its peer are ordinary states.
+
+While the Bridge runs, Joy-Con rows report live `接続` or `接続待ち` from the service. While it is stopped, a manual check reports only the snapshot `検出済み` or `未検出`; starting the Bridge invalidates that snapshot so a failed start cannot leave a stale `接続` indication. One status line lives in the state card and every transition keeps it current.
+
+Filled buttons of one size and color are actions, the stop action alone uses the danger color, and section toggles are outlined. A failure message points at the operation log and opens it. The page scrolls as a whole.
+
+Both configured Joy-Cons must be available when the service starts. A HID read or write failure stops the service instead of leaving a nonfunctional process running; reconnect the controller and start the service again.
 
 The Windows release is one self-contained `Joy-Con Bridge` application. The user is never asked to place, select, or start a second program, enter a file location, edit a communication address, or use a command line. The same application runs both the visible controls and the background vibration service without extracting another program. Measurement data, the optimized profile, and diagnostic details use the current Windows user's local application-data area automatically.
 

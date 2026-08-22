@@ -203,6 +203,8 @@ pub fn run() -> io::Result<()> {
         return joycon::imu_sweep_from_env();
     }
 
+    eprintln!("bridge version={}", env!("CARGO_PKG_VERSION"));
+
     let config = Config::load()?;
     let mut trace = config
         .trace_csv

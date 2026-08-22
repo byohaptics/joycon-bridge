@@ -11,13 +11,15 @@ Joy-ConをBYO Hapticsで振動させるためのWindowsアプリです。
 
 1. WindowsのBluetooth設定でJoy-Con (L)とJoy-Con (R)を接続します。
 2. `Joy-Con Bridge`を開きます。
-3. `接続状態を確認`を押します。
+3. `接続を確認`を押します。
 4. 左右が両方とも`検出済み`になったら、`振動を開始`を押します。
-5. `BYO Haptics: 接続`になれば準備完了です。
+5. 画面上部が`待機中`に変わります。BYO Haptics側が接続すると`振動中`になり、準備完了です。
 
-利用者が開くものは`Joy-Con Bridge`だけです。追加のプログラム、保存場所、通信設定はアプリが自動的に管理します。
+通常は設定ファイルを用意する必要はありません。
 
-`測定して最適化`は必要な人だけが使う機能です。通常は実行しなくても振動します。
+画面下部には`振動の測定と最適化`と`動作ログ`の欄があります。測定と最適化は必要な人だけが使う機能で、通常は実行する必要はありません。動作ログは問題が起きたときに自動で開きます。
+
+動作ログや測定結果のファイルは`%LOCALAPPDATA%\BYO Haptics\Joy-Con Bridge`に保存されます。
 
 ## 開発
 
@@ -34,6 +36,6 @@ cargo clippy --all-targets -- -D warnings
 
 [byohaptics](https://github.com/byohaptics)
 
-Co-authored-by: Codex <codex@openai.com>
+Assisted-by: OpenAI Codex, Claude Code
 
 Licensed under the [MIT License](LICENSE).

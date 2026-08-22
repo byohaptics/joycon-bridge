@@ -11,20 +11,29 @@ use std::os::windows::process::CommandExt;
 
 use iced::theme::Palette;
 use iced::widget::{button, column, container, horizontal_space, radio, row, scrollable, text};
-use iced::{Alignment, Color, Element, Font, Length, Task, Theme, border};
+use iced::{Alignment, Border, Color, Element, Font, Length, Task, Theme, border};
 
 const ACTION_BUTTON_WIDTH: f32 = 150.0;
 const ACTION_BUTTON_HEIGHT: f32 = 36.0;
+const TOGGLE_BUTTON_WIDTH: f32 = 84.0;
+const TOGGLE_BUTTON_HEIGHT: f32 = 30.0;
 const ACTION_COLOR: Color = Color::from_rgb(0.604, 0.302, 0.0);
 const ACTION_HOVER_COLOR: Color = Color::from_rgb(0.455, 0.227, 0.0);
 const DANGER_COLOR: Color = Color::from_rgb(0.702, 0.149, 0.118);
 const DANGER_HOVER_COLOR: Color = Color::from_rgb(0.510, 0.086, 0.067);
 const DISABLED_COLOR: Color = Color::from_rgb(0.357, 0.396, 0.451);
 const CONNECTED_COLOR: Color = Color::from_rgb(0.0, 0.420, 0.369);
+const PENDING_COLOR: Color = ACTION_COLOR;
+const MUTED_COLOR: Color = DISABLED_COLOR;
+const CARD_COLOR: Color = Color::WHITE;
+const CARD_BORDER_COLOR: Color = Color::from_rgb(0.847, 0.863, 0.890);
 const DEFAULT_LISTEN: &str = "0.0.0.0:9010";
 const LOG_FILE: &str = "bridge.log";
 const MEASUREMENT_FILE: &str = "measurement.csv";
 const PROFILE_FILE: &str = "optimized-profile.toml";
+const IDLE_STATUS: &str = "Joy-Conの接続を確認してから、振動を開始してください。";
+const WAITING_STATUS: &str = "BYO Hapticsからの接続を待っています。";
+
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -97,6 +106,72 @@ fn solid_button_style(
     }
 }
 
+fn secondary_button_style(
+    _theme: &Theme,
+    status: iced::widget::button::Status,
+) -> iced::widget::button::Style {
+    let (text_color, border_color) = match status {
+        iced::widget::button::Status::Disabled => (DISABLED_COLOR, CARD_BORDER_COLOR),
+        iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed => {
+            (ACTION_HOVER_COLOR, ACTION_HOVER_COLOR)
+        }
+        iced::widget::button::Status::Active => (ACTION_COLOR, CARD_BORDER_COLOR),
+    };
+    iced::widget::button::Style {
+        background: None,
+        text_color,
+        border: Border {
+            color: border_color,
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..iced::widget::button::Style::default()
+    }
+}
+
+fn card_style(_theme: &Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(CARD_COLOR.into()),
+        border: Border {
+            color: CARD_BORDER_COLOR,
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..iced::widget::container::Style::default()
+    }
+}
+
+/// Every state is encoded by shape and color together, so the display stays
+/// readable without color vision. Red is reserved for genuine faults; an idle
+/// or waiting state must never look like an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Indicator {
+    Active,
+    Pending,
+    Inactive,
+    Fault,
+}
+
+impl Indicator {
+    fn glyph(self) -> &'static str {
+        match self {
+            Self::Active => "●",
+            Self::Pending => "○",
+            Self::Inactive => "－",
+            Self::Fault => "×",
+        }
+    }
+
+    fn color(self) -> Color {
+        match self {
+            Self::Active => CONNECTED_COLOR,
+            Self::Pending => PENDING_COLOR,
+            Self::Inactive => MUTED_COLOR,
+            Self::Fault => DANGER_COLOR,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Side {
     Left,
@@ -144,6 +219,9 @@ struct App {
     bridge_left_connected: bool,
     bridge_right_connected: bool,
     plugin_connected: bool,
+    calibration_expanded: bool,
+    log_expanded: bool,
+    bridge_failed: bool,
     status: String,
     log: String,
 }
@@ -160,7 +238,10 @@ impl Default for App {
             bridge_left_connected: false,
             bridge_right_connected: false,
             plugin_connected: false,
-            status: "Joy-Conを接続して、接続状態を確認してください。".into(),
+            calibration_expanded: false,
+            log_expanded: false,
+            bridge_failed: false,
+            status: IDLE_STATUS.into(),
             log: String::new(),
         }
     }
@@ -183,6 +264,8 @@ enum Message {
     CommandFinished(CommandResult),
     StartBridge,
     StopBridge,
+    ToggleCalibration,
+    ToggleLog,
     Tick,
 }
 
@@ -208,6 +291,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Err(error) = fs::create_dir_all(data_directory()) {
                 app.status = "測定を開始できませんでした。".into();
                 app.log = error.to_string();
+                app.log_expanded = true;
                 return Task::none();
             }
             app.busy = true;
@@ -228,6 +312,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
         }
         Message::CommandFinished(result) => {
             app.busy = false;
+            if !result.success {
+                app.log_expanded = true;
+            }
             if result.title == "デバイス検索" {
                 app.scan_completed = true;
                 app.left_detected = result.output.contains("Left Joy-Con");
@@ -240,7 +327,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             }
             app.status = if result.title == "デバイス検索" {
                 if !result.success {
-                    "Joy-Conの確認に失敗しました。下の詳しい情報を確認してください。".into()
+                    "Joy-Conの確認に失敗しました。下の動作ログを確認してください。".into()
                 } else if app.left_detected || app.right_detected {
                     "接続済みJoy-Conを更新しました。".into()
                 } else {
@@ -250,7 +337,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 format!("{}が正常に完了しました。", result.title)
             } else {
                 format!(
-                    "{}に失敗しました。下の詳しい情報を確認してください。",
+                    "{}に失敗しました。下の動作ログを確認してください。",
                     result.title
                 )
             };
@@ -270,6 +357,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             };
         }
         Message::StartBridge if !app.busy && app.bridge.is_none() => {
+            app.bridge_failed = false;
             app.scan_completed = false;
             app.left_detected = false;
             app.right_detected = false;
@@ -279,12 +367,12 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.bridge_left_connected = false;
                     app.bridge_right_connected = false;
                     app.plugin_connected = false;
-                    app.status = "振動を開始しました。".into();
-                    app.log = "Joy-ConとBYO Hapticsの接続を待っています。".into();
+                    app.status = WAITING_STATUS.into();
                 }
                 Err(error) => {
                     app.status = "ブリッジを起動できませんでした。".into();
                     app.log = error.to_string();
+                    app.log_expanded = true;
                 }
             }
         }
@@ -292,8 +380,14 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if let Some(mut child) = app.bridge.take() {
                 let _ = child.kill();
                 let _ = child.wait();
-                app.status = "振動を停止しました。".into();
+                app.status = IDLE_STATUS.into();
             }
+        }
+        Message::ToggleCalibration => {
+            app.calibration_expanded = !app.calibration_expanded;
+        }
+        Message::ToggleLog => {
+            app.log_expanded = !app.log_expanded;
         }
         Message::Tick => {
             if let Some(child) = app.bridge.as_mut()
@@ -301,7 +395,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             {
                 app.bridge = None;
                 app.plugin_connected = false;
-                app.status = "振動が停止しました。下の詳しい情報を確認してください。".into();
+                app.bridge_failed = true;
+                app.log_expanded = true;
+                app.status = "振動が予期せず停止しました。動作ログを確認してください。".into();
                 app.log = fs::read_to_string(data_path(LOG_FILE))
                     .map(|log| localize_cli_output(&log))
                     .unwrap_or_else(|error| error.to_string());
@@ -309,9 +405,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             if app.bridge.is_some()
                 && let Ok(log) = fs::read_to_string(data_path(LOG_FILE))
             {
+                let was_connected = app.plugin_connected;
                 app.bridge_left_connected = last_status(&log, "joycon-left") == Some("connected");
                 app.bridge_right_connected = last_status(&log, "joycon-right") == Some("connected");
                 app.plugin_connected = last_status(&log, "plugin") == Some("connected");
+                if app.plugin_connected != was_connected {
+                    app.status = if app.plugin_connected {
+                        "BYO Hapticsからの信号でJoy-Conが振動します。".into()
+                    } else {
+                        WAITING_STATUS.into()
+                    };
+                }
             }
         }
         _ => {}
@@ -319,49 +423,92 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
     Task::none()
 }
 
-fn joycon_status(
-    name: &str,
+fn connection_state(
     bridge_running: bool,
     bridge_connected: bool,
     scan_completed: bool,
     detected: bool,
-) -> (String, Color) {
-    let (state, color) = if bridge_running && bridge_connected {
-        ("● 接続", CONNECTED_COLOR)
+) -> (Indicator, &'static str) {
+    if bridge_running && bridge_connected {
+        (Indicator::Active, "接続")
     } else if bridge_running {
-        ("× 未接続", DANGER_COLOR)
+        (Indicator::Pending, "接続待ち")
     } else if !scan_completed {
-        ("－ 未確認", DISABLED_COLOR)
+        (Indicator::Inactive, "未確認")
     } else if detected {
-        ("● 検出済み", CONNECTED_COLOR)
+        (Indicator::Active, "検出済み")
     } else {
-        ("× 未検出", DANGER_COLOR)
+        (Indicator::Fault, "未検出")
+    }
+}
+
+/// The headline answers "is it working right now". The line under it is
+/// `App::status`, which every transition keeps current, so the two never
+/// disagree and nothing has to be said twice.
+fn bridge_state(app: &App) -> (Indicator, &'static str) {
+    if app.bridge.is_some() {
+        if app.plugin_connected {
+            (Indicator::Active, "振動中")
+        } else {
+            (Indicator::Pending, "待機中")
+        }
+    } else if app.bridge_failed {
+        (Indicator::Fault, "停止しました")
+    } else {
+        (Indicator::Inactive, "停止中")
+    }
+}
+
+fn status_row<'a>(label: &'a str, indicator: Indicator, state: &'a str) -> Element<'a, Message> {
+    row![
+        text(label).size(15),
+        horizontal_space(),
+        text(indicator.glyph()).size(15).color(indicator.color()),
+        text(state).size(15).color(indicator.color()),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn section<'a>(
+    title: &'a str,
+    expanded: bool,
+    toggle: Message,
+    body: Element<'a, Message>,
+) -> Element<'a, Message> {
+    let header = row![
+        text(title).size(18),
+        horizontal_space(),
+        button(text(if expanded { "閉じる" } else { "開く" }).size(14))
+            .on_press(toggle)
+            .width(Length::Fixed(TOGGLE_BUTTON_WIDTH))
+            .height(Length::Fixed(TOGGLE_BUTTON_HEIGHT))
+            .style(secondary_button_style),
+    ]
+    .align_y(Alignment::Center);
+
+    let inner = if expanded {
+        column![header, body].spacing(16)
+    } else {
+        column![header]
     };
-    (format!("{name}  {state}"), color)
+
+    container(inner)
+        .width(Length::Fill)
+        .padding(16)
+        .style(card_style)
+        .into()
 }
 
 fn view(app: &App) -> Element<'_, Message> {
+    let bridge_running = app.bridge.is_some();
     let selected_detected = match app.side {
         Side::Left => app.left_detected,
         Side::Right => app.right_detected,
     };
-    let scan = (if app.busy {
-        button("接続状態を確認")
-    } else {
-        button("接続状態を確認").on_press(Message::Scan)
-    })
-    .width(Length::Fixed(ACTION_BUTTON_WIDTH))
-    .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
-    .style(action_button_style);
-    let measure = (if app.busy || app.bridge.is_some() || !selected_detected {
-        button("測定して最適化")
-    } else {
-        button("測定して最適化").on_press(Message::Measure)
-    })
-    .width(Length::Fixed(ACTION_BUTTON_WIDTH))
-    .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
-    .style(action_button_style);
-    let bridge_running = app.bridge.is_some();
+
+    let (bridge_indicator, bridge_title) = bridge_state(app);
     let bridge_button = (if bridge_running {
         button("振動を停止").on_press(Message::StopBridge)
     } else if app.busy {
@@ -377,142 +524,152 @@ fn view(app: &App) -> Element<'_, Message> {
         action_button_style
     });
 
-    let (left_status, left_status_color) = joycon_status(
-        "Joy-Con (L)",
+    let bridge_card = container(
+        column![
+            row![
+                text(bridge_indicator.glyph())
+                    .size(26)
+                    .color(bridge_indicator.color()),
+                text(bridge_title).size(26),
+                horizontal_space(),
+                bridge_button,
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+            text(&app.status).size(14).color(MUTED_COLOR),
+        ]
+        .spacing(14),
+    )
+    .width(Length::Fill)
+    .padding(24)
+    .style(card_style);
+
+    let (left_indicator, left_state) = connection_state(
         bridge_running,
         app.bridge_left_connected,
         app.scan_completed,
         app.left_detected,
     );
-    let (right_status, right_status_color) = joycon_status(
-        "Joy-Con (R)",
+    let (right_indicator, right_state) = connection_state(
         bridge_running,
         app.bridge_right_connected,
         app.scan_completed,
         app.right_detected,
     );
+    let (plugin_indicator, plugin_state) = if !bridge_running {
+        (Indicator::Inactive, "未確認")
+    } else if app.plugin_connected {
+        (Indicator::Active, "接続")
+    } else {
+        (Indicator::Pending, "接続待ち")
+    };
 
-    let device_section = container(
+    let scan = (if app.busy {
+        button("接続を確認")
+    } else {
+        button("接続を確認").on_press(Message::Scan)
+    })
+    .width(Length::Fixed(ACTION_BUTTON_WIDTH))
+    .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
+    .style(action_button_style);
+
+    let connection_card = container(
         column![
-            text("1. Joy-Con接続").size(20),
-            row![
-                container(text(left_status).color(left_status_color))
-                    .width(Length::Fixed(190.0))
-                    .padding(10)
-                    .style(iced::widget::container::bordered_box),
-                container(text(right_status).color(right_status_color))
-                    .width(Length::Fixed(190.0))
-                    .padding(10)
-                    .style(iced::widget::container::bordered_box),
-                horizontal_space(),
-                scan,
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
+            status_row("Joy-Con (L)", left_indicator, left_state),
+            status_row("Joy-Con (R)", right_indicator, right_state),
+            status_row("BYO Haptics", plugin_indicator, plugin_state),
+            row![horizontal_space(), scan],
         ]
-        .spacing(12),
+        .spacing(14),
     )
     .width(Length::Fill)
     .padding(16)
-    .style(iced::widget::container::bordered_box);
+    .style(card_style);
 
-    let calibration_section = container(
-        column![
-            text("振動の測定と最適化").size(20),
-            row![
-                text("測定対象").width(Length::Fixed(170.0)),
-                radio(
-                    "Joy-Con (L)",
-                    Side::Left,
-                    Some(app.side),
-                    Message::SideSelected
-                ),
-                radio(
-                    "Joy-Con (R)",
-                    Side::Right,
-                    Some(app.side),
-                    Message::SideSelected
-                )
-            ]
-            .spacing(18)
-            .align_y(Alignment::Center),
-            text("Joy-Conを安定した場所に置き、測定中は動かさないでください。"),
-            row![horizontal_space(), measure,],
-        ]
-        .spacing(12),
-    )
-    .width(Length::Fill)
-    .padding(16)
-    .style(iced::widget::container::bordered_box);
+    let measure = (if app.busy || bridge_running || !selected_detected {
+        button("測定して最適化")
+    } else {
+        button("測定して最適化").on_press(Message::Measure)
+    })
+    .width(Length::Fixed(ACTION_BUTTON_WIDTH))
+    .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
+    .style(action_button_style);
 
-    let bridge_section = container(
-        column![
-            text("2. 振動").size(20),
-            row![
-                text(if bridge_running {
-                    "● 振動サービス: 稼働中"
-                } else {
-                    "× 振動サービス: 停止"
-                })
-                .color(if bridge_running {
-                    CONNECTED_COLOR
-                } else {
-                    DANGER_COLOR
-                }),
-                text(if app.plugin_connected {
-                    "● BYO Haptics: 接続"
-                } else {
-                    "× BYO Haptics: 未接続"
-                })
-                .color(if app.plugin_connected {
-                    CONNECTED_COLOR
-                } else {
-                    DANGER_COLOR
-                }),
-            ]
-            .spacing(28),
-            row![horizontal_space(), bridge_button,],
+    let calibration_body = column![
+        text("通常は必要ありません。振動の強さを調整したい場合だけ実行してください。")
+            .size(14)
+            .color(MUTED_COLOR),
+        row![
+            text("測定対象").size(15).width(Length::Fixed(120.0)),
+            radio(
+                "Joy-Con (L)",
+                Side::Left,
+                Some(app.side),
+                Message::SideSelected
+            ),
+            radio(
+                "Joy-Con (R)",
+                Side::Right,
+                Some(app.side),
+                Message::SideSelected
+            ),
         ]
-        .spacing(12),
-    )
-    .width(Length::Fill)
-    .padding(16)
-    .style(iced::widget::container::bordered_box);
+        .spacing(18)
+        .align_y(Alignment::Center),
+        text("Joy-Conを安定した場所に置き、測定中は動かさないでください。")
+            .size(14)
+            .color(MUTED_COLOR),
+        row![horizontal_space(), measure],
+    ]
+    .spacing(14);
 
-    let log_section = container(
-        column![
-            text("詳しい情報").size(20),
-            scrollable(text(if app.log.is_empty() {
-                "詳しい情報はありません。"
-            } else {
-                &app.log
-            }))
-            .height(Length::Fill),
-        ]
-        .spacing(8),
+    let log_body = scrollable(
+        text(if app.log.is_empty() {
+            "まだ記録はありません。"
+        } else {
+            &app.log
+        })
+        .size(14),
     )
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .padding(16)
-    .style(iced::widget::container::bordered_box);
+    .height(Length::Fixed(180.0));
+
+    // A label belongs to the card underneath it, so it sits closer to that card
+    // than the gap that separates one group from the next.
+    let connection_group = column![
+        text("接続状況").size(14).color(MUTED_COLOR),
+        connection_card,
+    ]
+    .spacing(6);
 
     let content = column![
-        text("Joy-Con Bridge - BYO Haptics").size(30),
-        text("Joy-Conの接続を確認して、振動を開始します。"),
-        row![text("現在の実行状況:").size(16), text(&app.status).size(16),]
-            .spacing(10)
-            .align_y(Alignment::Center),
-        device_section,
-        bridge_section,
-        calibration_section,
-        log_section,
+        row![
+            text("Joy-Con Bridge").size(24),
+            horizontal_space(),
+            text(concat!("v", env!("CARGO_PKG_VERSION")))
+                .size(14)
+                .color(MUTED_COLOR),
+        ]
+        .align_y(Alignment::Center),
+        bridge_card,
+        connection_group,
+        section(
+            "振動の測定と最適化",
+            app.calibration_expanded,
+            Message::ToggleCalibration,
+            calibration_body.into(),
+        ),
+        section(
+            "動作ログ",
+            app.log_expanded,
+            Message::ToggleLog,
+            log_body.into(),
+        ),
     ]
-    .spacing(12)
-    .padding(18)
-    .max_width(700);
+    .spacing(18)
+    .padding(24)
+    .max_width(640);
 
-    container(content)
-        .center_x(Length::Fill)
+    scrollable(container(content).center_x(Length::Fill))
         .height(Length::Fill)
         .into()
 }
@@ -608,7 +765,7 @@ fn bridge_command() -> Command {
 }
 
 fn bridge_executable() -> PathBuf {
-    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("joycon-rumble-gui.exe"))
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("Joy-Con-Bridge.exe"))
 }
 
 #[cfg(test)]
@@ -636,15 +793,75 @@ mod tests {
 
     #[test]
     fn stopped_bridge_reports_detection_snapshot_not_connection() {
-        let (detected, _) = joycon_status("Joy-Con (R)", false, false, true, true);
-        let (live, _) = joycon_status("Joy-Con (R)", true, true, false, false);
-        assert_eq!(detected, "Joy-Con (R)  ● 検出済み");
-        assert_eq!(live, "Joy-Con (R)  ● 接続");
+        assert_eq!(
+            connection_state(false, false, true, true),
+            (Indicator::Active, "検出済み")
+        );
+        assert_eq!(
+            connection_state(true, true, false, false),
+            (Indicator::Active, "接続")
+        );
+    }
+
+    #[test]
+    fn waiting_for_a_peer_is_not_reported_as_a_fault() {
+        // The bridge is up but nothing has connected yet. That is a pending
+        // state, not an error, so it must not borrow the fault indicator.
+        let (indicator, _) = connection_state(true, false, false, false);
+        assert_eq!(indicator, Indicator::Pending);
+
+        let idle = App::default();
+        let (indicator, title) = bridge_state(&idle);
+        assert_eq!(indicator, Indicator::Inactive);
+        assert_eq!(title, "停止中");
+    }
+
+    #[test]
+    fn every_indicator_has_a_distinct_shape_as_well_as_a_color() {
+        use Indicator::{Active, Fault, Inactive, Pending};
+        let glyphs = [Active, Pending, Inactive, Fault].map(Indicator::glyph);
+        let unique: std::collections::HashSet<_> = glyphs.iter().collect();
+        assert_eq!(unique.len(), glyphs.len());
+    }
+
+    #[test]
+    fn a_failure_reveals_the_log_it_tells_the_user_to_read() {
+        let mut app = App::default();
+        assert!(!app.log_expanded);
+        let _ = update(
+            &mut app,
+            Message::CommandFinished(CommandResult {
+                title: "デバイス検索",
+                success: false,
+                output: "failed".into(),
+            }),
+        );
+        assert!(app.log_expanded);
     }
 
     #[test]
     fn bridge_runs_from_the_same_application() {
         assert_eq!(bridge_executable(), std::env::current_exe().unwrap());
+    }
+
+    #[test]
+    fn calibration_options_are_hidden_by_default() {
+        let mut app = App::default();
+        assert!(!app.calibration_expanded);
+        let _ = update(&mut app, Message::ToggleCalibration);
+        assert!(app.calibration_expanded);
+    }
+
+    #[test]
+    fn indicator_colors_meet_wcag_normal_text_contrast_on_a_card() {
+        for indicator in [
+            Indicator::Active,
+            Indicator::Pending,
+            Indicator::Inactive,
+            Indicator::Fault,
+        ] {
+            assert!(contrast_ratio(indicator.color(), CARD_COLOR) >= 4.5);
+        }
     }
 
     #[test]

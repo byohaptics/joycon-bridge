@@ -13,5 +13,5 @@ iced = { version = "0.13.1", features = ["tokio"] }
 winres = "0.1"
 
 [[bin]]
-name = "joycon-rumble-gui"
+name = "Joy-Con-Bridge"
 path = "src/bin/gui.rs"
