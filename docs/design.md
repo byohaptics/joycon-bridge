@@ -13,7 +13,7 @@
 
 ## Status And Operation
 
-A state card leads: whether it is vibrating, the current status line, and the start or stop action. Under it the left Joy-Con, the right Joy-Con, and the Plugin heartbeat are listed as rows. Vibration measurement and the operation log are collapsed until asked for. The display is not numbered as a sequence of steps; it is read at a glance, not walked through once.
+A state card leads: whether the Bridge is running, the current status line, and the start or stop action. The headline reports that the Bridge can relay haptics, not that a controller is vibrating at this instant: the Plugin heartbeat is what the GUI can observe, and rumble output changes far too fast to mirror in a status line. Under it the left Joy-Con, the right Joy-Con, and the Plugin heartbeat are listed as rows. Vibration measurement and the operation log are collapsed until asked for. The display is not numbered as a sequence of steps; it is read at a glance, not walked through once.
 
 Status is encoded by shape and color together, so it survives without color vision: a filled green `●` is active, an amber `○` is pending, a gray `－` is inactive or not yet checked, and a red `×` is a fault. Red carries only genuine faults; a stopped Bridge and a Bridge waiting for its peer are ordinary states.
 

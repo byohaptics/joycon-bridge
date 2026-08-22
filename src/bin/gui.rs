@@ -442,13 +442,15 @@ fn connection_state(
     }
 }
 
-/// The headline answers "is it working right now". The line under it is
-/// `App::status`, which every transition keeps current, so the two never
-/// disagree and nothing has to be said twice.
+/// The headline answers "is the Bridge working right now". It must not claim
+/// the controllers are vibrating: `plugin_connected` only tracks the heartbeat,
+/// and rumble output starts and stops far faster than a status line could
+/// follow. The line under it is `App::status`, which every transition keeps
+/// current, so the two never disagree and nothing has to be said twice.
 fn bridge_state(app: &App) -> (Indicator, &'static str) {
     if app.bridge.is_some() {
         if app.plugin_connected {
-            (Indicator::Active, "振動中")
+            (Indicator::Active, "動作中")
         } else {
             (Indicator::Pending, "待機中")
         }
@@ -564,14 +566,11 @@ fn view(app: &App) -> Element<'_, Message> {
         (Indicator::Pending, "接続待ち")
     };
 
-    let scan = (if app.busy {
-        button("接続を確認")
-    } else {
-        button("接続を確認").on_press(Message::Scan)
-    })
-    .width(Length::Fixed(ACTION_BUTTON_WIDTH))
-    .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
-    .style(action_button_style);
+    let scan = button("接続を確認")
+        .on_press_maybe((!app.busy).then_some(Message::Scan))
+        .width(Length::Fixed(ACTION_BUTTON_WIDTH))
+        .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
+        .style(action_button_style);
 
     let connection_card = container(
         column![
@@ -586,14 +585,13 @@ fn view(app: &App) -> Element<'_, Message> {
     .padding(16)
     .style(card_style);
 
-    let measure = (if app.busy || bridge_running || !selected_detected {
-        button("測定して最適化")
-    } else {
-        button("測定して最適化").on_press(Message::Measure)
-    })
-    .width(Length::Fixed(ACTION_BUTTON_WIDTH))
-    .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
-    .style(action_button_style);
+    let measure = button("測定して最適化")
+        .on_press_maybe(
+            (!app.busy && !bridge_running && selected_detected).then_some(Message::Measure),
+        )
+        .width(Length::Fixed(ACTION_BUTTON_WIDTH))
+        .height(Length::Fixed(ACTION_BUTTON_HEIGHT))
+        .style(action_button_style);
 
     let calibration_body = column![
         text("通常は必要ありません。振動の強さを調整したい場合だけ実行してください。")
