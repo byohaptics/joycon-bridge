@@ -1,6 +1,6 @@
 # BYO Haptics Joy-Con Bridge
 
-Version `0.1.0`
+Version `0.1.1`
 
 Joy-ConをBYO Hapticsで振動させるためのWindowsアプリです。
 

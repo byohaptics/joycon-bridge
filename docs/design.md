@@ -2,7 +2,7 @@
 
 ## Identity
 
-- Bridge version: `0.1.0`
+- Bridge version: `0.1.1`
 - Bridge API version: `0.1.0`
 - Transport: OSC over UDP to Bluetooth HID
 - Supported host plugin: `io.github.byohaptics.output.joycon.osc`
